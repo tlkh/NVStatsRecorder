@@ -13,6 +13,8 @@ Simple Python utilities to instrument NVIDIA GPUs, designed to work directly fro
 * Returns raw data, including system-provided reasons for performance throttling
 * Works from within Docker (when used with compatible GPU runtime)
 
+![graphs](images/nvstatsrecorder.jpg)
+
 ## Usage
 
 ### Installing
@@ -79,8 +81,6 @@ nvlink_data = nvlink_stats_recorder.get_data()
 nv_stats_recorder.plot_gpu_util(smooth=3)
 nvlink_stats_recorder.plot_nvlink_traffic(smooth=3)
 ```
-
-<img src="https://raw.githubusercontent.com/tlkh/NVStatsRecorder/master/assets/nvstats.png" width="49%"> <img src="https://raw.githubusercontent.com/tlkh/NVStatsRecorder/master/assets/nvlinkstats.png" width="49%">
 
 # Development
 
