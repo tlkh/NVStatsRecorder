@@ -1,0 +1,3 @@
+pynvml
+matplotlib
+numpy
