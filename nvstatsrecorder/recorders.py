@@ -151,12 +151,12 @@ class NVStatsRecorder(StatsRecorder):
                     and throttle_reason_str is not "None"
                 ):
                     print("Detected GPU throttle:", throttle_reason_str)
-                    self.throttle_reasons.append(throttle_reason_str)
+                    self.throttle_reasons.append((throttle_reason_str, t))
                 time.sleep(interval)
             self.time_history.append(t)
             t += interval
 
-    def plot_gpu_util(self, smooth=2, show=True, outpath=None):
+    def plot_gpu_util(self, smooth=2, show=True, figsize=(10,8), dpi=150, outpath=None):
         gpu_data = self.get_data()
         trunc = smooth - 1
         t_len = len(gpu_data["time_history"])
@@ -169,14 +169,17 @@ class NVStatsRecorder(StatsRecorder):
         ]
         pcie_txrx = self._moving_average(gpu_data["pcie_txrx"], smooth)[: t_len - trunc]
         plt.clf()
-        plt.plot(time_history, sm_util_history)
-        plt.plot(time_history, mem_util_history)
-        plt.plot(time_history, gpu_data["mem_occupy_history"][trunc:t_len])
-        plt.plot(time_history, pcie_txrx)
+        plt.figure(figsize=figsize, dpi=dpi)
+        plt.plot(time_history, sm_util_history, label="SM Util")
+        plt.plot(time_history, mem_util_history, label="Mem I/O")
+        plt.plot(time_history, gpu_data["mem_occupy_history"][trunc:t_len], label="Mem Usage")
+        plt.plot(time_history, pcie_txrx, label="PCIE Util", color="y")
+        for item in gpu_data["throttle_reasons"]:
+            plt.axvline(item[1], color="r", linestyle="--", label=item[0])
         plt.title("GPU Utilization")
         plt.ylabel("%")
         plt.xlabel("Time")
-        plt.legend(["SM Util", "Mem I/O", "Mem Usage", "PCIE Util"], loc="upper left")
+        plt.legend(loc="upper left")
         if outpath:
             plt.savefig(outpath)
         plt.show()
@@ -227,6 +230,9 @@ class NVLinkStatsRecorder(StatsRecorder):
         )
 
     def _parse_nvlink_output(self, output):
+        """
+        Returns the average NVLink throughput across all GPUs
+        """
         list_gpu_data = output.split("GPU ")[1:]
         list_tx, list_rx = [], []
         for i, gpu_data in enumerate(list_gpu_data):
@@ -244,7 +250,7 @@ class NVLinkStatsRecorder(StatsRecorder):
         total_bw = sum(list_tx) + sum(list_rx)
         return total_bw / len(self.gpus)
 
-    def plot_nvlink_traffic(self, smooth=2, show=True, outpath=None):
+    def plot_nvlink_traffic(self, smooth=2, show=True, figsize=(10,8), dpi=150, outpath=None):
         nvlink_data = self.get_data()
         trunc = smooth - 1
         t_len = len(nvlink_data["time_history"])
@@ -253,6 +259,7 @@ class NVLinkStatsRecorder(StatsRecorder):
             : t_len - trunc
         ]
         plt.clf()
+        plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(time_history, nvlink_history)
         plt.title("NVLink Traffic")
         plt.ylabel("GB/s")
