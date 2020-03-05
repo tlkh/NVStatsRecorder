@@ -5,7 +5,7 @@ with open("pip_readme.md", "r") as fh:
 
 setuptools.setup(
     name="nvstatsrecorder",
-    version="0.0.4",
+    version="0.0.5",
     author="Timothy Liu",
     author_email="timothyl@nvidia.com",
     description="NVStatsRecorder",
