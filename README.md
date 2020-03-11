@@ -1,6 +1,6 @@
 # NVStatsRecorder
 
-![GitHub last commit](https://img.shields.io/github/last-commit/tlkh/NVStatsRecorder.svg) ![GitHub](https://img.shields.io/github/license/tlkh/NVStatsRecorder.svg) ![](https://img.shields.io/github/repo-size/tlkh/NVStatsRecorder.svg)
+![GitHub last commit](https://img.shields.io/github/last-commit/tlkh/NVStatsRecorder.svg) ![GitHub](https://img.shields.io/github/license/tlkh/NVStatsRecorder.svg) ![](https://img.shields.io/github/repo-size/tlkh/NVStatsRecorder.svg) ![PyPI - Downloads](https://img.shields.io/pypi/dm/nvstatsrecorder)
 
 Simple Python utilities to instrument NVIDIA GPUs, designed to work directly from within Jupyter Notebooks requiring minimal system utilities. This allows users to quickly judge if their code takes proper advantage of NVIDIA GPUs and diagnose performance bottlenecks. **Not an official NVIDIA product.**
 
@@ -10,6 +10,7 @@ Simple Python utilities to instrument NVIDIA GPUs, designed to work directly fro
 * Record NVIDIA GPU metrics without additional system utilities
 * Helper functions to plot graphs visualising GPU usage
 * NVLink bandwidth measurements (**require elevated permissions**)
+* Tensor Core utilization (**require elevated permissions, DCGM and Tesla driver**)
 * Returns raw data, including system-provided reasons for performance throttling
 * Works from within Docker (when used with compatible GPU runtime)
 
@@ -82,13 +83,6 @@ nvlink_stats_recorder.plot_nvlink_traffic(smooth=3)
 
 <img src="https://raw.githubusercontent.com/tlkh/NVStatsRecorder/master/assets/nvstats.png" width="49%"> <img src="https://raw.githubusercontent.com/tlkh/NVStatsRecorder/master/assets/nvlinkstats.png" width="49%">
 
-# Development
-
-```shell
-# build pip wheel and install
-python3 setup.py sdist bdist_wheel
-pip install dist/nvstatsrecorder-*-py3-none-any.whl
-```
 
 ## Support
 

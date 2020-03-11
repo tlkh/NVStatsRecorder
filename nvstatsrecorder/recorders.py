@@ -14,6 +14,9 @@ class StatsRecorder(object):
     def start(self, interval=1):
         Thread(target=self._update, args=([interval])).start()
         return self
+    
+    def _run_command(self, cmd):
+        return subprocess.getoutput(cmd)
 
     def _update(self, interval=1):
         t = 0
@@ -42,6 +45,8 @@ class NVStatsRecorder(StatsRecorder):
     Used to record generic NVIDIA GPU metrics over a time period.
     Args:
         gpu_index (int): Index of GPU to instrument (starts from 0)
+        tensor_util (bool): Collect Tensor Core utilization
+        sudo_password (str): Superuser password required to collect Tensor Core utilization
     Usage:
         ```python
         nv_stats_recorder = NVStatsRecorder(gpu_index=0)
@@ -51,10 +56,22 @@ class NVStatsRecorder(StatsRecorder):
         gpu_data = nv_stats_recorder.get_data()
         ```
     """
-    def __init__(self, gpu_index=0):
+    def __init__(self, gpu_index=0, tensor_util=False, sudo_password=""):
         self.stopped = False
         self.time_history = []
         self.sm_util_history = []
+        self.tensor_util = tensor_util
+        if self.tensor_util:
+            print("[  IMPORTANT NOTICE  ]")
+            print("`tensor_util` is set to `True`")
+            print("This enables Tensor Core utilization metrics collected via DCGM 1.7+")
+            print("Supported GPUs are V100, T4 on Tesla-ready driver (418, 440+) only!")
+            self.sudo_password = str(sudo_password)
+            if len(self.sudo_password) < 2:
+                print("This requires starting DCGM with superuser permissions! Please specify `sudo_password` argument.")
+            output = self._start_dcgm_profiler()
+            print("Attempted to start DCGM:", output.strip())
+        self.tensor_util_history = []
         self.sm_clocks_history = []
         self.mem_clocks_history = []
         self.mem_util_history = []
@@ -65,6 +82,7 @@ class NVStatsRecorder(StatsRecorder):
         self.throttle_reasons = []
         nvmlInit()
         self.handle = nvmlDeviceGetHandleByIndex(gpu_index)
+        self.gpu_index = str(gpu_index)
         # calculate max PCIE bandwidth
         try:
             pcie_gen = nvmlDeviceGetMaxPcieLinkGeneration(self.handle)
@@ -97,6 +115,19 @@ class NVStatsRecorder(StatsRecorder):
             "max_power": int(nvmlDeviceGetEnforcedPowerLimit(self.handle)),
         }
 
+    def _start_dcgm_profiler(self):
+        return self._run_command(
+            "echo '" + self.sudo_password + "' | sudo -S nv-hostengine"
+        )
+    
+    def _get_tensor_pipe_active(self, interval):
+        interval = str(int(interval/2*1000))
+        output = self._run_command(
+            "dcgmi dmon -e 1004 -c 1 -i " + self.gpu_index + " -d " + interval
+        )
+        output = float(output.split(" "+self.gpu_index+"  ")[1].strip()) * 100
+        return output
+
     def _get_throttle_reason(self, bitmask):
         bitmask = str(int(bitmask))
         return self.throttle_reason_map[bitmask]
@@ -117,6 +148,7 @@ class NVStatsRecorder(StatsRecorder):
                 nvmlShutdown()
                 return
             else:
+                st = time.time()
                 util = nvmlDeviceGetUtilizationRates(self.handle)
                 self.sm_util_history.append(util.gpu)
                 self.mem_util_history.append(util.memory)
@@ -153,11 +185,16 @@ class NVStatsRecorder(StatsRecorder):
                 ):
                     print("Detected GPU throttle:", throttle_reason_str)
                     self.throttle_reasons.append((throttle_reason_str, t))
-                time.sleep(interval)
-            self.time_history.append(t)
-            t += interval
+                if self.tensor_util:
+                    self.tensor_util_history.append(self._get_tensor_pipe_active(interval))
+                et = time.time()
+                while (et-st) < interval:
+                    time.sleep(interval/5)
+                    et = time.time()
+                t += (et-st)
+                self.time_history.append(t)
 
-    def plot_gpu_util(self, smooth=2, figsize=(10,8), dpi=100, outpath=None):
+    def plot_gpu_util(self, smooth=2, figsize=(10,6), dpi=100, outpath=None):
         gpu_data = self.get_data()
         trunc = smooth - 1
         t_len = len(gpu_data["time_history"])
@@ -175,12 +212,23 @@ class NVStatsRecorder(StatsRecorder):
         plt.clf()
         plt.figure(figsize=figsize, dpi=dpi)
         plt.plot(time_history, sm_util_history, label="SM Util", color="g")
+        if self.tensor_util:
+            tensor_util_history = self._moving_average(gpu_data["tensor_util_history"], smooth)[
+                : t_len - trunc
+            ]
+            plt.plot(time_history, tensor_util_history, label="TC Util", color="#76b900")
         plt.plot(time_history, mem_util_history, label="Mem I/O", color="c")
         plt.plot(time_history, gpu_data["mem_occupy_history"][trunc:t_len], label="Mem Usage", color="y")
         plt.plot(time_history, pwr_history_history, label="Power", color="m")
         plt.plot(time_history, pcie_txrx, label="PCIE Util", color="b")
+        listed = []
         for item in gpu_data["throttle_reasons"]:
-            plt.axvline(item[1], color="r", linestyle="--", linewidth=1, label=item[0])
+            label = str(item[0])
+            if label not in listed:
+                plt.axvline(item[1], color="r", linestyle="--", linewidth=1, label=label)
+                listed.append(label)
+            else:
+                plt.axvline(item[1], color="r", linestyle="--", linewidth=1)
         plt.title("GPU Utilization")
         plt.ylabel("%")
         plt.xlabel("Time")
@@ -195,6 +243,7 @@ class NVStatsRecorder(StatsRecorder):
             "device_data": self.device_data,
             "time_history": self.time_history[:t_len],
             "sm_util_history": self.sm_util_history[:t_len],
+            "tensor_util_history": self.tensor_util_history[:t_len],
             "sm_clocks_history": self.sm_clocks_history[:t_len],
             "mem_util_history": self.mem_util_history[:t_len],
             "mem_clocks_history": self.mem_clocks_history[:t_len],
@@ -215,9 +264,6 @@ class NVLinkStatsRecorder(StatsRecorder):
         self.nvlink_history = []
         self.sudo_password = str(sudo_password)
         self.colors = ["b", "g", "c", "m", "y", "b", "g", "c", "m", "y", "b", "g", "c", "m", "y", "b", "g", "c", "m", "y"]
-
-    def _run_command(self, cmd):
-        return subprocess.getoutput(cmd)
 
     def _start_nvlink_counter(self):
         return self._run_command(
@@ -257,7 +303,7 @@ class NVLinkStatsRecorder(StatsRecorder):
                 gpu_bw[str(i)] = total_bw / 1e6
         return gpu_bw
 
-    def plot_nvlink_traffic(self, smooth=2, figsize=(10,8), dpi=100, outpath=None):
+    def plot_nvlink_traffic(self, smooth=2, figsize=(10,6), dpi=100, outpath=None):
         nvlink_data = self.get_data()
         trunc = smooth - 1
         t_len = len(nvlink_data["time_history"])
@@ -295,8 +341,6 @@ class NVLinkStatsRecorder(StatsRecorder):
         plt.show()
 
     def start(self, interval=2):
-        self._start_nvlink_counter()
-        self._reset_nvlink_counter()
         Thread(target=self._update, args=([interval])).start()
         return self
 
