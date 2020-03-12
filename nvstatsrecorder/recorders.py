@@ -313,6 +313,7 @@ class NVLinkStatsRecorder(StatsRecorder):
         for gpu in self.gpus:
             per_gpu_data = []
             for data in nvlink_history:
+                print(data)
                 per_gpu_data.append(data[str(gpu)])
             per_gpu_data = np.asarray(per_gpu_data)
             per_gpu_data = self._moving_average(per_gpu_data, smooth)[:t_len - trunc]
@@ -346,15 +347,18 @@ class NVLinkStatsRecorder(StatsRecorder):
 
     def _update(self, interval):
         t = 0
+        counter = {}
+        for i in self.gpus:
+            counter[str(i)] = 0
         while True:
             if self.stopped:
                 return
             else:
-                output = self._read_nvlink_counter()
                 self._reset_nvlink_counter()
-                counter = self._parse_nvlink_output(output)
                 self.nvlink_history.append(counter)
                 time.sleep(interval)
+                output = self._read_nvlink_counter()
+                counter = self._parse_nvlink_output(output)
             self.time_history.append(t)
             t += interval
 
