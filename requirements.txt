@@ -1,3 +1,4 @@
-nvidia-ml-py3
+pynvml
+py3nvml
 matplotlib
 numpy
